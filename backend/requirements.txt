@@ -4,5 +4,6 @@ Flask-Cors
 Flask-JWT-Extended
 Flask-Admin
 Flask-Babel
+WTForms==2.3.3
 gunicorn
 psycopg2-binary
