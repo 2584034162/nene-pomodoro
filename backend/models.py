@@ -10,6 +10,14 @@ class User(db.Model):
     tasks = db.relationship('Task', backref='user', lazy=True)
     checkins = db.relationship('CheckIn', backref='user', lazy=True)
 
+    @property
+    def password(self):
+        return ""
+        
+    @password.setter
+    def password(self, password):
+        self.password_hash = generate_password_hash(password)
+
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 

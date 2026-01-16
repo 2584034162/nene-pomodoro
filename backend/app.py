@@ -15,10 +15,6 @@ class UserModelView(ModelView):
         'password': PasswordField('密码')
     }
 
-    def on_model_change(self, form, model, is_created):
-        if form.password.data:
-            model.set_password(form.password.data)
-
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
