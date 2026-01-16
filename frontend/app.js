@@ -1,7 +1,7 @@
 const { createApp, ref, onMounted, computed, watch } = Vue;
 
 // 自动判断环境：如果是本地开发(localhost/127.0.0.1)，使用本地后端；否则使用生产环境后端
-// 请在部署后端后，将 'https://YOUR-RENDER-APP-NAME.onrender.com' 替换为您实际的 Render 后端 URL
+// 请在部署后端后，请将这里替换为您实际的后端 URL
 const PROD_API_URL = 'https://nene-pomodoro.onrender.com';
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') 
     ? 'http://127.0.0.1:5000' 
@@ -304,4 +304,5 @@ createApp({
         };
     }
 }).mount('#app');
+
 
