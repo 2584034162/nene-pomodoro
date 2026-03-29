@@ -116,17 +116,48 @@ def serialize_ai_config(config):
     }
 
 
+def normalize_api_url_with_v1(api_url):
+    text = str(api_url or '').strip().rstrip('/')
+    if not text:
+        return ''
+
+    if text.endswith('/chat/completions'):
+        return text
+
+    if '/v1/' in text or text.endswith('/v1'):
+        return text
+
+    return text + '/v1'
+
+
 def build_models_endpoint(api_url):
     if not api_url:
         return ''
-    text = str(api_url).strip()
+    text = normalize_api_url_with_v1(api_url)
+
     if text.endswith('/chat/completions'):
-        return text[: -len('/chat/completions')] + '/models'
-    if text.endswith('/v1/chat/completions'):
-        return text[: -len('/v1/chat/completions')] + '/v1/models'
+        base = text[: -len('/chat/completions')]
+        if base.endswith('/v1'):
+            return base[:-3] + '/v1/models'
+        return base + '/models'
+
+    if text.endswith('/v1'):
+        return text + '/models'
+
     if text.endswith('/'):
         return text + 'models'
     return text + '/models'
+
+
+def build_chat_endpoint(api_url):
+    if not api_url:
+        return ''
+    text = normalize_api_url_with_v1(api_url)
+    if text.endswith('/chat/completions'):
+        return text
+    if text.endswith('/v1'):
+        return text + '/chat/completions'
+    return text + '/chat/completions'
 
 
 def deep_get(obj, path):
@@ -253,8 +284,9 @@ def call_custom_ai_api(config, user_message, history_messages=None):
         'temperature': 0.7
     }
 
+    chat_url = build_chat_endpoint(config.api_url)
     req = urlrequest.Request(
-        url=config.api_url,
+        url=chat_url,
         data=json.dumps(body).encode('utf-8'),
         headers=headers,
         method='POST'
@@ -268,19 +300,22 @@ def call_custom_ai_api(config, user_message, history_messages=None):
         return {
             'reply': f'我刚刚没连上 AI 服务（HTTP {e.code}）。你检查一下 API URL 或密钥，我们再试一次～',
             'should_save': False,
-            'record': {}
+            'record': {},
+            'is_error': True
         }
     except URLError:
         return {
             'reply': '我这边网络有点小问题，暂时没连上你配置的 AI 服务。稍后再试试～',
             'should_save': False,
-            'record': {}
+            'record': {},
+            'is_error': True
         }
     except Exception:
         return {
             'reply': 'AI 服务返回的数据我暂时没读懂，你可以检查一下这个 API 是否兼容 chat completions 格式。',
             'should_save': False,
-            'record': {}
+            'record': {},
+            'is_error': True
         }
 
     content = (
@@ -293,7 +328,8 @@ def call_custom_ai_api(config, user_message, history_messages=None):
         return {
             'reply': 'AI 服务有响应，但我没找到可读的回复内容。',
             'should_save': False,
-            'record': {}
+            'record': {},
+            'is_error': True
         }
 
     parsed = parse_ai_json_output(str(content))
@@ -551,7 +587,8 @@ def ai_accounting_config():
     personality = data.get('personality', extract_personality(config.system_prompt or '温柔、耐心、像朋友一样自然聊天'))
     config.assistant_name = assistant_name
     config.system_prompt = build_system_prompt(assistant_name, personality)
-    config.api_url = data.get('api_url', config.api_url)
+    incoming_api_url = data.get('api_url', config.api_url)
+    config.api_url = normalize_api_url_with_v1(incoming_api_url)
     config.api_key = data.get('api_key', config.api_key)
     config.api_model = data.get('api_model', config.api_model or 'gpt-4o-mini')
 
@@ -657,7 +694,8 @@ def ai_accounting_chat():
     return jsonify({
         'assistant_reply': assistant_reply,
         'saved_record': saved_record,
-        'records': [serialize_accounting_record(r) for r in latest_records]
+        'records': [serialize_accounting_record(r) for r in latest_records],
+        'is_error': bool(ai_result.get('is_error', False))
     }), 200
 
 
