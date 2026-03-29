@@ -111,8 +111,22 @@ def serialize_ai_config(config):
         'assistant_name': config.assistant_name or '记账助理',
         'personality': extract_personality(config.system_prompt or ''),
         'api_url': config.api_url or '',
-        'api_key': config.api_key or ''
+        'api_key': config.api_key or '',
+        'api_model': config.api_model or 'gpt-4o-mini'
     }
+
+
+def build_models_endpoint(api_url):
+    if not api_url:
+        return ''
+    text = str(api_url).strip()
+    if text.endswith('/chat/completions'):
+        return text[: -len('/chat/completions')] + '/models'
+    if text.endswith('/v1/chat/completions'):
+        return text[: -len('/v1/chat/completions')] + '/v1/models'
+    if text.endswith('/'):
+        return text + 'models'
+    return text + '/models'
 
 
 def deep_get(obj, path):
@@ -234,7 +248,7 @@ def call_custom_ai_api(config, user_message, history_messages=None):
     messages.append({'role': 'user', 'content': user_message})
 
     body = {
-        'model': 'gpt-4o-mini',
+        'model': (config.api_model or 'gpt-4o-mini'),
         'messages': messages,
         'temperature': 0.7
     }
@@ -539,16 +553,65 @@ def ai_accounting_config():
     config.system_prompt = build_system_prompt(assistant_name, personality)
     config.api_url = data.get('api_url', config.api_url)
     config.api_key = data.get('api_key', config.api_key)
+    config.api_model = data.get('api_model', config.api_model or 'gpt-4o-mini')
 
     # 保持简单固定，避免前端复杂配置
     config.api_method = 'POST'
     config.api_headers = '{}'
-    config.api_model = 'gpt-4o-mini'
     config.request_template = ''
     config.response_path = 'choices.0.message.content'
 
     db.session.commit()
     return jsonify({"msg": "配置已保存", "config": serialize_ai_config(config)}), 200
+
+
+@api_bp.route('/ai-accounting/models', methods=['GET'])
+@jwt_required()
+def ai_accounting_models():
+    current_user_id = int(get_jwt_identity())
+    config = get_or_create_ai_config(current_user_id)
+
+    api_url = (request.args.get('api_url') or config.api_url or '').strip()
+    api_key = (request.args.get('api_key') or config.api_key or '').strip()
+
+    if not api_url:
+        return jsonify({'models': [], 'msg': '请先填写 API URL'}), 200
+
+    models_url = build_models_endpoint(api_url)
+    headers = {}
+    if api_key:
+        headers['Authorization'] = f'Bearer {api_key}'
+
+    req = urlrequest.Request(
+        url=models_url,
+        headers=headers,
+        method='GET'
+    )
+
+    try:
+        with urlrequest.urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode('utf-8')
+            data = json.loads(raw)
+    except HTTPError as e:
+        return jsonify({'models': [], 'msg': f'拉取模型失败（HTTP {e.code}）'}), 200
+    except URLError:
+        return jsonify({'models': [], 'msg': '拉取模型失败（网络错误）'}), 200
+    except Exception:
+        return jsonify({'models': [], 'msg': '拉取模型失败（响应格式异常）'}), 200
+
+    model_list = []
+    items = data.get('data', []) if isinstance(data, dict) else []
+    for item in items:
+        if isinstance(item, dict):
+            mid = str(item.get('id', '')).strip()
+            if mid:
+                model_list.append(mid)
+
+    model_list = sorted(list(set(model_list)))
+    return jsonify({
+        'models': model_list,
+        'models_endpoint': models_url
+    }), 200
 
 
 @api_bp.route('/ai-accounting/chat', methods=['POST'])
