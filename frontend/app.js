@@ -322,7 +322,6 @@ createApp({
                     retryPayload: isError ? payload : null
                 });
                 accountingRecords.value = res.data.records || accountingRecords.value;
-                await fetchAccountingRecords();
             } catch (error) {
                 const payload = {
                     message,
@@ -355,7 +354,6 @@ createApp({
                     retryPayload: isError ? msg.retryPayload : null
                 };
                 accountingRecords.value = res.data.records || accountingRecords.value;
-                await fetchAccountingRecords();
             } catch (error) {
                 chatMessages.value[idx] = {
                     role: 'assistant',
@@ -500,9 +498,6 @@ createApp({
             if (newVal === 'accounting') {
                 await fetchAiConfig();
                 await fetchAccountingRecords();
-                if (aiConfig.value.api_url) {
-                    await fetchAvailableModels();
-                }
             }
         });
 
