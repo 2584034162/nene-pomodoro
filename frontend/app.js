@@ -56,8 +56,10 @@ createApp({
             assistant_name: 'NeNe记账助理',
             personality: '温柔、耐心、像朋友一样自然聊天',
             api_url: '',
-            api_key: ''
+            api_key: '',
+            api_model: 'gpt-4o-mini'
         });
+        const modelOptions = ref([]);
         const chatMessages = ref([]);
         const chatInput = ref('');
         const chatLoading = ref(false);
@@ -194,6 +196,31 @@ createApp({
                 };
             } catch (error) {
                 console.error('加载AI配置失败', error);
+            }
+        };
+
+        const fetchAvailableModels = async () => {
+            if (!aiConfig.value.api_url) {
+                alert('请先填写 API URL');
+                return;
+            }
+            try {
+                const res = await axios.get(`${API_URL}/api/ai-accounting/models`, {
+                    params: {
+                        api_url: aiConfig.value.api_url,
+                        api_key: aiConfig.value.api_key
+                    }
+                });
+                modelOptions.value = res.data.models || [];
+                if (!modelOptions.value.length) {
+                    alert(res.data.msg || '未获取到可用模型');
+                    return;
+                }
+                if (!modelOptions.value.includes(aiConfig.value.api_model)) {
+                    aiConfig.value.api_model = modelOptions.value[0];
+                }
+            } catch (error) {
+                alert(error.response?.data?.msg || '拉取模型失败');
             }
         };
 
@@ -384,6 +411,9 @@ createApp({
             if (newVal === 'accounting') {
                 await fetchAiConfig();
                 await fetchAccountingRecords();
+                if (aiConfig.value.api_url) {
+                    await fetchAvailableModels();
+                }
             }
         });
 
@@ -409,6 +439,7 @@ createApp({
             chatLoading,
             accountingRecords,
             accountingSummary,
+            modelOptions,
             login,
             register,
             logout,
@@ -419,6 +450,7 @@ createApp({
             startPomodoro,
             pausePomodoro,
             resetPomodoro,
+            fetchAvailableModels,
             saveAiConfig,
             sendAccountingMessage
         };

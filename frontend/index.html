@@ -298,9 +298,20 @@
                                     <label class="form-label">API URL</label>
                                     <input type="text" class="form-control" v-model="aiConfig.api_url" placeholder="例如 https://api.openai.com/v1/chat/completions">
                                 </div>
-                                <div class="mb-3">
+                                <div class="mb-2">
                                     <label class="form-label">API Key</label>
                                     <input type="password" class="form-control" v-model="aiConfig.api_key">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">可选模型</label>
+                                    <div class="input-group">
+                                        <select class="form-select" v-model="aiConfig.api_model">
+                                            <option value="">请选择模型</option>
+                                            <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
+                                        </select>
+                                        <button class="btn btn-outline-secondary" type="button" @click="fetchAvailableModels">拉取模型</button>
+                                    </div>
+                                    <div class="form-text">点击“拉取模型”后可从该 API 获取可用模型并选择。</div>
                                 </div>
                                 <button class="btn btn-primary" @click="saveAiConfig">保存配置</button>
                             </div>
