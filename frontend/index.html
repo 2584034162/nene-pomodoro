@@ -291,41 +291,16 @@
                                     <input type="text" class="form-control" v-model="aiConfig.assistant_name">
                                 </div>
                                 <div class="mb-2">
-                                    <label class="form-label">系统提示词</label>
-                                    <textarea class="form-control" rows="3" v-model="aiConfig.system_prompt"></textarea>
+                                    <label class="form-label">性格设定</label>
+                                    <input type="text" class="form-control" v-model="aiConfig.personality" placeholder="例如：温柔耐心、像朋友一样聊天">
                                 </div>
                                 <div class="mb-2">
                                     <label class="form-label">API URL</label>
                                     <input type="text" class="form-control" v-model="aiConfig.api_url" placeholder="例如 https://api.openai.com/v1/chat/completions">
                                 </div>
-                                <div class="row">
-                                    <div class="col-6 mb-2">
-                                        <label class="form-label">Method</label>
-                                        <select class="form-select" v-model="aiConfig.api_method">
-                                            <option value="POST">POST</option>
-                                            <option value="GET">GET</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-6 mb-2">
-                                        <label class="form-label">Model</label>
-                                        <input type="text" class="form-control" v-model="aiConfig.api_model">
-                                    </div>
-                                </div>
-                                <div class="mb-2">
+                                <div class="mb-3">
                                     <label class="form-label">API Key</label>
                                     <input type="password" class="form-control" v-model="aiConfig.api_key">
-                                </div>
-                                <div class="mb-2">
-                                    <label class="form-label">Headers(JSON)</label>
-                                    <textarea class="form-control" rows="2" v-model="aiConfig.api_headers"></textarea>
-                                </div>
-                                <div class="mb-2">
-                                    <label class="form-label">请求体模板(JSON, 支持 &#123;&#123;model&#125;&#125; &#123;&#123;system_prompt&#125;&#125; &#123;&#123;user_message&#125;&#125;)</label>
-                                    <textarea class="form-control" rows="3" v-model="aiConfig.request_template"></textarea>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label">回复提取路径（点号路径）</label>
-                                    <input type="text" class="form-control" v-model="aiConfig.response_path" placeholder="choices.0.message.content">
                                 </div>
                                 <button class="btn btn-primary" @click="saveAiConfig">保存配置</button>
                             </div>
@@ -337,7 +312,7 @@
                             <div class="card-header">{{ aiConfig.assistant_name || '记账助理' }} 对话记账</div>
                             <div class="card-body">
                                 <div class="chat-box mb-3">
-                                    <div v-if="chatMessages.length === 0" class="text-muted">示例：今天午饭花了26元，地铁3元。</div>
+                                    <div v-if="chatMessages.length === 0" class="text-muted">你可以像和朋友聊天一样说：今天午饭26元，地铁3元。</div>
                                     <div
                                         v-for="(msg, idx) in chatMessages"
                                         :key="idx"
@@ -354,7 +329,7 @@
                                         type="text"
                                         class="form-control"
                                         v-model="chatInput"
-                                        placeholder="输入记账内容，例如：今天晚饭68元"
+                                        placeholder="和助理聊聊今天的开销/收入，比如：今天晚饭68元"
                                         @keyup.enter="sendAccountingMessage"
                                     >
                                     <button class="btn btn-success" @click="sendAccountingMessage" :disabled="chatLoading">

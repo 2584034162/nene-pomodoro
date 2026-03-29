@@ -54,14 +54,9 @@ createApp({
         // AI记账状态
         const aiConfig = ref({
             assistant_name: 'NeNe记账助理',
-            system_prompt: '你是一个记账助手。请从用户输入中提取账单信息并返回 JSON：{"reply":"给用户的话","should_save":true/false,"record":{"amount":数字,"entry_type":"expense|income","category":"分类","note":"备注","occurred_at":"YYYY-MM-DD"}}。如果信息不足，should_save=false 并引导用户补充。',
+            personality: '温柔、耐心、像朋友一样自然聊天',
             api_url: '',
-            api_method: 'POST',
-            api_headers: '{}',
-            api_model: '',
-            api_key: '',
-            request_template: '{"model":"{{model}}","messages":[{"role":"system","content":"{{system_prompt}}"},{"role":"user","content":"{{user_message}}"}]}',
-            response_path: 'choices.0.message.content'
+            api_key: ''
         });
         const chatMessages = ref([]);
         const chatInput = ref('');
@@ -239,7 +234,8 @@ createApp({
             chatLoading.value = true;
 
             try {
-                const res = await axios.post(`${API_URL}/api/ai-accounting/chat`, { message });
+                const history = chatMessages.value.slice(0, -1);
+                const res = await axios.post(`${API_URL}/api/ai-accounting/chat`, { message, history });
                 chatMessages.value.push({
                     role: 'assistant',
                     content: res.data.assistant_reply || '已收到'
