@@ -77,6 +77,8 @@ createApp({
             balance: 0
         });
         const accountingConfigTab = ref('api');
+        const accountingTypeFilter = ref('all');
+        const accountingCategoryFilter = ref('all');
 
         // 计算属性
         const isLoggedIn = computed(() => !!token.value);
@@ -91,6 +93,37 @@ createApp({
                 groups[date].push(task);
             });
             return groups;
+        });
+
+        const filteredAccountingRecords = computed(() => {
+            return accountingRecords.value.filter((item) => {
+                if (accountingTypeFilter.value !== 'all' && item.entry_type !== accountingTypeFilter.value) {
+                    return false;
+                }
+                if (accountingCategoryFilter.value !== 'all' && item.category !== accountingCategoryFilter.value) {
+                    return false;
+                }
+                return true;
+            });
+        });
+
+        const filteredSummary = computed(() => {
+            let income = 0;
+            let expense = 0;
+            for (const r of filteredAccountingRecords.value) {
+                const amount = Number(r.amount) || 0;
+                if (r.entry_type === 'income') {
+                    income += amount;
+                } else if (r.entry_type === 'expense') {
+                    expense += amount;
+                }
+            }
+            const balance = income - expense;
+            return {
+                income: Number(income.toFixed(2)),
+                expense: Number(expense.toFixed(2)),
+                balance: Number(balance.toFixed(2))
+            };
         });
 
         // Axios 拦截器
@@ -525,6 +558,10 @@ createApp({
             accountingRecords,
             accountingSummary,
             accountingConfigTab,
+            accountingTypeFilter,
+            accountingCategoryFilter,
+            filteredAccountingRecords,
+            filteredSummary,
             modelOptions,
             login,
             register,
