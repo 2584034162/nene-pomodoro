@@ -64,7 +64,8 @@ createApp({
         const providerOptions = ref([
             { label: '自定义', value: 'custom', baseUrl: '' },
             { label: 'OpenAI', value: 'openai', baseUrl: 'https://api.openai.com/v1' },
-            { label: 'Wataruu', value: 'wataruu', baseUrl: 'https://api.wataruu.me/v1' }
+            { label: 'Gemini', value: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+            { label: 'Claude', value: 'claude', baseUrl: 'https://api.anthropic.com/v1' }
         ]);
         const chatMessages = ref([]);
         const chatInput = ref('');
