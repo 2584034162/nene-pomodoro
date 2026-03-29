@@ -107,9 +107,14 @@ def extract_personality(system_prompt):
 
 
 def serialize_ai_config(config):
+    personality = (getattr(config, 'personality', '') or '').strip()
+    if not personality:
+        personality = extract_personality(config.system_prompt or '')
+
     return {
         'assistant_name': config.assistant_name or '记账助理',
-        'personality': extract_personality(config.system_prompt or ''),
+        'personality': personality,
+        'api_provider': (getattr(config, 'api_provider', '') or 'custom'),
         'api_url': config.api_url or '',
         'api_key': config.api_key or '',
         'api_model': config.api_model or 'gpt-4o-mini'
@@ -268,12 +273,13 @@ def call_custom_ai_api(config, user_message, history_messages=None, role_overrid
     override_name = str(role_override.get('assistant_name', '')).strip()
     override_personality = str(role_override.get('personality', '')).strip()
 
+    config_personality = (getattr(config, 'personality', '') or '').strip() or extract_personality(config.system_prompt or '')
     if override_name or override_personality:
         role_name = override_name or (config.assistant_name or '记账助理')
-        role_personality = override_personality or extract_personality(config.system_prompt or '')
+        role_personality = override_personality or config_personality
         system_prompt = build_system_prompt(role_name, role_personality)
     else:
-        system_prompt = config.system_prompt or build_system_prompt(config.assistant_name, '温柔、耐心、像朋友一样自然聊天')
+        system_prompt = build_system_prompt(config.assistant_name, config_personality)
 
     messages = [{
         'role': 'system',
@@ -595,9 +601,11 @@ def ai_accounting_config():
 
     data = request.get_json() or {}
     assistant_name = data.get('assistant_name', config.assistant_name or '记账助理')
-    personality = data.get('personality', extract_personality(config.system_prompt or '温柔、耐心、像朋友一样自然聊天'))
+    personality = data.get('personality', getattr(config, 'personality', '') or extract_personality(config.system_prompt or '温柔、耐心、像朋友一样自然聊天'))
     config.assistant_name = assistant_name
+    config.personality = personality
     config.system_prompt = build_system_prompt(assistant_name, personality)
+    config.api_provider = data.get('api_provider', getattr(config, 'api_provider', 'custom') or 'custom')
     incoming_api_url = data.get('api_url', config.api_url)
     config.api_url = normalize_api_url_with_v1(incoming_api_url)
     config.api_key = data.get('api_key', config.api_key)

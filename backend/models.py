@@ -56,11 +56,13 @@ class AiAssistantConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True, info={'label': '用户ID'})
     assistant_name = db.Column(db.String(80), default='NeNe记账助理', info={'label': '助理名称'})
+    personality = db.Column(db.String(255), default='温柔、耐心、像朋友一样自然聊天', info={'label': '人格设定'})
     system_prompt = db.Column(
         db.Text,
         default='你是一个记账助手。请从用户输入中提取账单信息并返回 JSON：{"reply":"给用户的话","should_save":true/false,"record":{"amount":数字,"entry_type":"expense|income","category":"分类","note":"备注","occurred_at":"YYYY-MM-DD"}}。如果信息不足，should_save=false 并引导用户补充。',
         info={'label': '系统提示词'}
     )
+    api_provider = db.Column(db.String(50), default='custom', info={'label': 'API服务商'})
     api_url = db.Column(db.String(500), nullable=True, info={'label': 'API地址'})
     api_method = db.Column(db.String(10), default='POST', info={'label': 'API方法'})
     api_headers = db.Column(db.Text, default='{}', info={'label': '请求头JSON'})
