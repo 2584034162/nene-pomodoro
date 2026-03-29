@@ -15,6 +15,10 @@
         .nav-link { cursor: pointer; }
         .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
         .fade-enter-from, .fade-leave-to { opacity: 0; }
+        .chat-box { height: 320px; overflow-y: auto; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 12px; }
+        .chat-message { margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; max-width: 85%; white-space: pre-wrap; }
+        .chat-user { margin-left: auto; background: #cfe2ff; }
+        .chat-assistant { margin-right: auto; background: #e2e3e5; }
     </style>
 </head>
 <body>
@@ -31,6 +35,7 @@
                         <li class="nav-item"><a class="nav-link" :class="{active: currentView === 'dashboard'}" @click="currentView = 'dashboard'">仪表盘</a></li>
                         <li class="nav-item"><a class="nav-link" :class="{active: currentView === 'tasks'}" @click="currentView = 'tasks'">任务管理</a></li>
                         <li class="nav-item"><a class="nav-link" :class="{active: currentView === 'pomodoro'}" @click="currentView = 'pomodoro'">番茄钟</a></li>
+                        <li class="nav-item"><a class="nav-link" :class="{active: currentView === 'accounting'}" @click="currentView = 'accounting'">AI记账</a></li>
                     </ul>
                     <ul class="navbar-nav ms-auto">
                         <li class="nav-item" v-if="!isLoggedIn">
@@ -105,7 +110,7 @@
                         <div class="card text-white bg-success mb-3">
                             <div class="card-header">自律评分</div>
                             <div class="card-body">
-                                <h1 class="card-title text-center">{{ stats.discipline_score }}</h1>
+                                <h1 class="card-title text-center">{{ stats.score.discipline }}</h1>
                                 <p class="card-text text-center">分</p>
                             </div>
                         </div>
@@ -114,7 +119,7 @@
                         <div class="card text-white bg-info mb-3">
                             <div class="card-header">今日完成任务</div>
                             <div class="card-body">
-                                <h1 class="card-title text-center">{{ stats.completed_tasks_count }}</h1>
+                                <h1 class="card-title text-center">{{ stats.tasks.completed_today }}</h1>
                                 <p class="card-text text-center">个</p>
                             </div>
                         </div>
@@ -123,7 +128,7 @@
                         <div class="card text-white bg-warning mb-3">
                             <div class="card-header">专注时长</div>
                             <div class="card-body">
-                                <h1 class="card-title text-center">{{ stats.total_pomodoro_minutes }}</h1>
+                                <h1 class="card-title text-center">{{ stats.pomodoro.total_minutes }}</h1>
                                 <p class="card-text text-center">分钟</p>
                             </div>
                         </div>
@@ -144,11 +149,11 @@
                             <div class="card-header">今日待办</div>
                             <ul class="list-group list-group-flush">
                                 <li class="list-group-item d-flex justify-content-between align-items-center" v-for="task in tasks" :key="task.id">
-                                    <span :style="{ textDecoration: task.is_completed ? 'line-through' : 'none', color: task.is_completed ? 'gray' : 'inherit' }">
+                                    <span :style="{ textDecoration: task.progress.completed ? 'line-through' : 'none', color: task.progress.completed ? 'gray' : 'inherit' }">
                                         {{ task.title }} 
-                                        <small class="text-muted">({{ task.progress }}/{{ task.target_value }} {{ task.target_type === 'time' ? '分' : '次' }})</small>
+                                        <small class="text-muted">({{ task.progress.value }}/{{ task.target.value }} {{ task.target.type === 'time' ? '分' : '次' }})</small>
                                     </span>
-                                    <button class="btn btn-sm btn-outline-success" @click="checkInTask(task.id)" :disabled="task.is_completed" v-if="task.target_type !== 'time'">打卡</button>
+                                    <button class="btn btn-sm btn-outline-success" @click="checkInTask(task.id)" :disabled="task.progress.completed" v-if="task.target.type !== 'time'">打卡</button>
                                 </li>
                                 <li class="list-group-item text-center text-muted" v-if="tasks.length === 0">暂无任务</li>
                             </ul>
@@ -181,7 +186,7 @@
                                         <tr v-for="task in groupTasks" :key="task.id">
                                             <td>{{ task.title }}</td>
                                             <td>{{ task.description }}</td>
-                                            <td>{{ task.target_value }} {{ task.target_type === 'time' ? '分钟' : '次' }}</td>
+                                            <td>{{ task.target.value }} {{ task.target.type === 'time' ? '分钟' : '次' }}</td>
                                             <td>
                                                 <button class="btn btn-sm btn-danger" @click="deleteTask(task.id)">删除</button>
                                             </td>
@@ -215,14 +220,14 @@
                                     <div class="row">
                                         <div class="col-6 mb-3">
                                             <label class="form-label">目标类型</label>
-                                            <select class="form-select" v-model="newTask.target_type">
+                                            <select class="form-select" v-model="newTask.target.type">
                                                 <option value="count">次数</option>
                                                 <option value="time">时长</option>
                                             </select>
                                         </div>
                                         <div class="col-6 mb-3">
                                             <label class="form-label">目标值</label>
-                                            <input type="number" class="form-control" v-model="newTask.target_value" min="1">
+                                            <input type="number" class="form-control" v-model="newTask.target.value" min="1">
                                         </div>
                                     </div>
                                     <div class="d-flex justify-content-end">
@@ -268,6 +273,134 @@
                             </div>
                             <div class="card-footer text-muted">
                                 每次专注 25 分钟，休息 5 分钟
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI记账视图 -->
+            <div v-if="currentView === 'accounting' && isLoggedIn">
+                <div class="row">
+                    <div class="col-lg-5">
+                        <div class="card">
+                            <div class="card-header">AI 助理配置</div>
+                            <div class="card-body">
+                                <div class="mb-2">
+                                    <label class="form-label">助理名称</label>
+                                    <input type="text" class="form-control" v-model="aiConfig.assistant_name">
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">系统提示词</label>
+                                    <textarea class="form-control" rows="3" v-model="aiConfig.system_prompt"></textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">API URL</label>
+                                    <input type="text" class="form-control" v-model="aiConfig.api_url" placeholder="例如 https://api.openai.com/v1/chat/completions">
+                                </div>
+                                <div class="row">
+                                    <div class="col-6 mb-2">
+                                        <label class="form-label">Method</label>
+                                        <select class="form-select" v-model="aiConfig.api_method">
+                                            <option value="POST">POST</option>
+                                            <option value="GET">GET</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6 mb-2">
+                                        <label class="form-label">Model</label>
+                                        <input type="text" class="form-control" v-model="aiConfig.api_model">
+                                    </div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">API Key</label>
+                                    <input type="password" class="form-control" v-model="aiConfig.api_key">
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Headers(JSON)</label>
+                                    <textarea class="form-control" rows="2" v-model="aiConfig.api_headers"></textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">请求体模板(JSON, 支持 &#123;&#123;model&#125;&#125; &#123;&#123;system_prompt&#125;&#125; &#123;&#123;user_message&#125;&#125;)</label>
+                                    <textarea class="form-control" rows="3" v-model="aiConfig.request_template"></textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">回复提取路径（点号路径）</label>
+                                    <input type="text" class="form-control" v-model="aiConfig.response_path" placeholder="choices.0.message.content">
+                                </div>
+                                <button class="btn btn-primary" @click="saveAiConfig">保存配置</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-7">
+                        <div class="card">
+                            <div class="card-header">{{ aiConfig.assistant_name || '记账助理' }} 对话记账</div>
+                            <div class="card-body">
+                                <div class="chat-box mb-3">
+                                    <div v-if="chatMessages.length === 0" class="text-muted">示例：今天午饭花了26元，地铁3元。</div>
+                                    <div
+                                        v-for="(msg, idx) in chatMessages"
+                                        :key="idx"
+                                        class="chat-message"
+                                        :class="msg.role === 'user' ? 'chat-user' : 'chat-assistant'"
+                                    >
+                                        <strong>{{ msg.role === 'user' ? '我' : (aiConfig.assistant_name || '助理') }}：</strong>
+                                        {{ msg.content }}
+                                    </div>
+                                </div>
+
+                                <div class="input-group">
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        v-model="chatInput"
+                                        placeholder="输入记账内容，例如：今天晚饭68元"
+                                        @keyup.enter="sendAccountingMessage"
+                                    >
+                                    <button class="btn btn-success" @click="sendAccountingMessage" :disabled="chatLoading">
+                                        {{ chatLoading ? '发送中...' : '发送' }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between">
+                                <span>记账记录</span>
+                                <span class="small text-muted">
+                                    收入 {{ accountingSummary.income.toFixed(2) }} /
+                                    支出 {{ accountingSummary.expense.toFixed(2) }} /
+                                    结余 {{ accountingSummary.balance.toFixed(2) }}
+                                </span>
+                            </div>
+                            <div class="card-body p-0">
+                                <table class="table table-sm mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>日期</th>
+                                            <th>类型</th>
+                                            <th>金额</th>
+                                            <th>分类</th>
+                                            <th>备注</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="item in accountingRecords" :key="item.id">
+                                            <td>{{ item.occurred_at }}</td>
+                                            <td>
+                                                <span :class="item.entry_type === 'income' ? 'text-success' : 'text-danger'">
+                                                    {{ item.entry_type === 'income' ? '收入' : '支出' }}
+                                                </span>
+                                            </td>
+                                            <td>{{ Number(item.amount).toFixed(2) }}</td>
+                                            <td>{{ item.category }}</td>
+                                            <td>{{ item.note }}</td>
+                                        </tr>
+                                        <tr v-if="accountingRecords.length === 0">
+                                            <td colspan="5" class="text-center text-muted">暂无记录</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>

@@ -1,10 +1,10 @@
 const { createApp, ref, onMounted, computed, watch } = Vue;
 
 // 自动判断环境：如果是本地开发(localhost/127.0.0.1)，使用本地后端；否则使用生产环境后端
-// 请在部署后端后，请将这里替换为您实际的后端 URL
+// 这里吧后端部署到了render上面，因此是下面这样
 const PROD_API_URL = 'https://nene-pomodoro.onrender.com';
-const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') 
-    ? 'http://127.0.0.1:5000' 
+const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://127.0.0.1:5000'
     : PROD_API_URL;
 
 createApp({
@@ -15,18 +15,32 @@ createApp({
         const username = ref(localStorage.getItem('username') || '');
         const tasks = ref([]);
         const stats = ref({
-            today_checkins: 0,
-            total_pomodoro_minutes: 0,
-            discipline_score: 0,
-            completion_rate: 0,
-            current_streak: 0,
-            completed_tasks_count: 0
+            checkins: {
+                today: 0
+            },
+            pomodoro: {
+                total_minutes: 0
+            },
+            tasks: {
+                completed_today: 0,
+                completion_rate: 0
+            },
+            score: {
+                discipline: 0
+            }
         });
-        
+
         // 表单数据
         const loginForm = ref({ username: '', password: '' });
         const registerForm = ref({ username: '', password: '' });
-        const newTask = ref({ title: '', description: '', target_type: 'count', target_value: 1 });
+        const newTask = ref({
+            title: '',
+            description: '',
+            target: {
+                type: 'count',
+                value: 1
+            }
+        });
         const showCreateTaskModal = ref(false);
 
         // 番茄钟状态
@@ -36,6 +50,28 @@ createApp({
         const pomodoroStatus = ref('idle'); // idle, work, break
         const selectedTaskId = ref(''); // 选中的任务ID
         let timerInterval = null;
+
+        // AI记账状态
+        const aiConfig = ref({
+            assistant_name: 'NeNe记账助理',
+            system_prompt: '你是一个记账助手。请从用户输入中提取账单信息并返回 JSON：{"reply":"给用户的话","should_save":true/false,"record":{"amount":数字,"entry_type":"expense|income","category":"分类","note":"备注","occurred_at":"YYYY-MM-DD"}}。如果信息不足，should_save=false 并引导用户补充。',
+            api_url: '',
+            api_method: 'POST',
+            api_headers: '{}',
+            api_model: '',
+            api_key: '',
+            request_template: '{"model":"{{model}}","messages":[{"role":"system","content":"{{system_prompt}}"},{"role":"user","content":"{{user_message}}"}]}',
+            response_path: 'choices.0.message.content'
+        });
+        const chatMessages = ref([]);
+        const chatInput = ref('');
+        const chatLoading = ref(false);
+        const accountingRecords = ref([]);
+        const accountingSummary = ref({
+            income: 0,
+            expense: 0,
+            balance: 0
+        });
 
         // 计算属性
         const isLoggedIn = computed(() => !!token.value);
@@ -69,7 +105,7 @@ createApp({
                 localStorage.setItem('token', token.value);
                 localStorage.setItem('username', username.value);
                 currentView.value = 'dashboard';
-                fetchData();
+                await fetchData();
             } catch (error) {
                 alert(error.response?.data?.msg || '登录失败');
             }
@@ -91,6 +127,8 @@ createApp({
             localStorage.removeItem('token');
             localStorage.removeItem('username');
             currentView.value = 'login';
+            chatMessages.value = [];
+            accountingRecords.value = [];
         };
 
         const fetchData = async () => {
@@ -113,7 +151,14 @@ createApp({
             try {
                 await axios.post(`${API_URL}/api/tasks`, newTask.value);
                 showCreateTaskModal.value = false;
-                newTask.value = { title: '', description: '', target_type: 'count', target_value: 1 };
+                newTask.value = {
+                    title: '',
+                    description: '',
+                    target: {
+                        type: 'count',
+                        value: 1
+                    }
+                };
                 fetchData();
             } catch (error) {
                 alert('创建任务失败');
@@ -140,6 +185,74 @@ createApp({
                 fetchData();
             } catch (error) {
                 alert('打卡失败');
+            }
+        };
+
+        // AI记账
+        const fetchAiConfig = async () => {
+            if (!isLoggedIn.value) return;
+            try {
+                const res = await axios.get(`${API_URL}/api/ai-accounting/config`);
+                aiConfig.value = {
+                    ...aiConfig.value,
+                    ...res.data
+                };
+            } catch (error) {
+                console.error('加载AI配置失败', error);
+            }
+        };
+
+        const saveAiConfig = async () => {
+            try {
+                const res = await axios.put(`${API_URL}/api/ai-accounting/config`, aiConfig.value);
+                aiConfig.value = {
+                    ...aiConfig.value,
+                    ...res.data.config
+                };
+                alert('AI配置已保存');
+            } catch (error) {
+                alert(error.response?.data?.msg || '保存配置失败');
+            }
+        };
+
+        const fetchAccountingRecords = async () => {
+            if (!isLoggedIn.value) return;
+            try {
+                const res = await axios.get(`${API_URL}/api/accounting/records`);
+                accountingRecords.value = res.data.records || [];
+                accountingSummary.value = res.data.summary || {
+                    income: 0,
+                    expense: 0,
+                    balance: 0
+                };
+            } catch (error) {
+                console.error('获取记账记录失败', error);
+            }
+        };
+
+        const sendAccountingMessage = async () => {
+            const message = chatInput.value.trim();
+            if (!message || chatLoading.value) return;
+
+            chatMessages.value.push({ role: 'user', content: message });
+            chatInput.value = '';
+            chatLoading.value = true;
+
+            try {
+                const res = await axios.post(`${API_URL}/api/ai-accounting/chat`, { message });
+                chatMessages.value.push({
+                    role: 'assistant',
+                    content: res.data.assistant_reply || '已收到'
+                });
+                accountingRecords.value = res.data.records || accountingRecords.value;
+                await fetchAccountingRecords();
+            } catch (error) {
+                chatMessages.value.push({
+                    role: 'assistant',
+                    content: error.response?.data?.msg || '发送失败，请检查配置后重试。'
+                });
+            } finally {
+                chatLoading.value = false;
             }
         };
 
@@ -175,11 +288,9 @@ createApp({
 
         const completePomodoro = async () => {
             pausePomodoro();
-            // 播放提示音 (可选)
             alert('专注时间结束!');
-            
+
             if (pomodoroStatus.value === 'work') {
-                // 记录专注时间
                 try {
                     await axios.post(`${API_URL}/api/checkin`, {
                         type: 'pomodoro',
@@ -187,11 +298,13 @@ createApp({
                         task_id: selectedTaskId.value || null
                     });
                     fetchData();
-                } catch (e) { console.error(e); }
+                } catch (e) {
+                    console.error(e);
+                }
 
                 pomodoroStatus.value = 'break';
                 pomodoroTime.value = 5 * 60;
-                if(confirm('开始休息吗?')) startPomodoro();
+                if (confirm('开始休息吗?')) startPomodoro();
             } else {
                 pomodoroStatus.value = 'work';
                 pomodoroTime.value = customDuration.value * 60;
@@ -201,9 +314,9 @@ createApp({
         // 监听选中的任务
         watch(selectedTaskId, (newId) => {
             if (!newId) return;
-            const task = tasks.value.find(t => t.id === newId);
-            if (task && task.target_type === 'time') {
-                customDuration.value = task.target_value;
+            const task = tasks.value.find(t => String(t.id) === String(newId));
+            if (task && task.target?.type === 'time') {
+                customDuration.value = task.target.value;
             }
         });
 
@@ -219,10 +332,9 @@ createApp({
         const renderChart = () => {
             const ctx = document.getElementById('radarChart');
             if (!ctx) return;
-            
+
             if (chartInstance) chartInstance.destroy();
 
-            // 模拟雷达图数据
             chartInstance = new Chart(ctx, {
                 type: 'radar',
                 data: {
@@ -230,11 +342,11 @@ createApp({
                     datasets: [{
                         label: '我的自律能力',
                         data: [
-                            stats.value.discipline_score, 
-                            Math.min(stats.value.total_pomodoro_minutes, 100), 
-                            Math.min(stats.value.today_checkins * 10, 100), 
-                            stats.value.completion_rate, 
-                            Math.min(stats.value.current_streak * 10, 100)
+                            stats.value.score.discipline,
+                            Math.min(stats.value.pomodoro.total_minutes, 100),
+                            Math.min(stats.value.checkins.today * 10, 100),
+                            stats.value.tasks.completion_rate,
+                            Math.min((stats.value.checkins.streak_days || 0) * 10, 100)
                         ],
                         fill: true,
                         backgroundColor: 'rgba(54, 162, 235, 0.2)',
@@ -261,17 +373,21 @@ createApp({
         };
 
         // 生命周期
-        onMounted(() => {
+        onMounted(async () => {
             if (isLoggedIn.value) {
                 currentView.value = 'dashboard';
-                fetchData();
+                await fetchData();
             }
         });
 
-        // 监听视图变化以重新渲染图表
-        watch(currentView, (newVal) => {
+        // 监听视图变化
+        watch(currentView, async (newVal) => {
             if (newVal === 'dashboard') {
                 setTimeout(renderChart, 100);
+            }
+            if (newVal === 'accounting') {
+                await fetchAiConfig();
+                await fetchAccountingRecords();
             }
         });
 
@@ -291,6 +407,12 @@ createApp({
             pomodoroActive,
             pomodoroStatus,
             selectedTaskId,
+            aiConfig,
+            chatMessages,
+            chatInput,
+            chatLoading,
+            accountingRecords,
+            accountingSummary,
             login,
             register,
             logout,
@@ -300,9 +422,9 @@ createApp({
             formatTime,
             startPomodoro,
             pausePomodoro,
-            resetPomodoro
+            resetPomodoro,
+            saveAiConfig,
+            sendAccountingMessage
         };
     }
 }).mount('#app');
-
-
