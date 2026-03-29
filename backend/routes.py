@@ -254,7 +254,7 @@ def fallback_parse_accounting(user_text):
     }
 
 
-def call_custom_ai_api(config, user_message, history_messages=None):
+def call_custom_ai_api(config, user_message, history_messages=None, role_override=None):
     if not config.api_url:
         return fallback_parse_accounting(user_message)
 
@@ -264,9 +264,20 @@ def call_custom_ai_api(config, user_message, history_messages=None):
     if config.api_key:
         headers['Authorization'] = f'Bearer {config.api_key}'
 
+    role_override = role_override or {}
+    override_name = str(role_override.get('assistant_name', '')).strip()
+    override_personality = str(role_override.get('personality', '')).strip()
+
+    if override_name or override_personality:
+        role_name = override_name or (config.assistant_name or '记账助理')
+        role_personality = override_personality or extract_personality(config.system_prompt or '')
+        system_prompt = build_system_prompt(role_name, role_personality)
+    else:
+        system_prompt = config.system_prompt or build_system_prompt(config.assistant_name, '温柔、耐心、像朋友一样自然聊天')
+
     messages = [{
         'role': 'system',
-        'content': config.system_prompt or build_system_prompt(config.assistant_name, '温柔、耐心、像朋友一样自然聊天')
+        'content': system_prompt
     }]
 
     history_messages = history_messages or []
@@ -658,12 +669,16 @@ def ai_accounting_chat():
     data = request.get_json() or {}
     user_message = (data.get('message') or '').strip()
     history = data.get('history') or []
+    role_override = {
+        'assistant_name': data.get('assistant_name', ''),
+        'personality': data.get('personality', '')
+    }
 
     if not user_message:
         return jsonify({"msg": "message 不能为空"}), 400
 
     config = get_or_create_ai_config(current_user_id)
-    ai_result = call_custom_ai_api(config, user_message, history)
+    ai_result = call_custom_ai_api(config, user_message, history, role_override=role_override)
 
     assistant_reply = str(ai_result.get('reply', '已收到')).strip()
     should_save = bool(ai_result.get('should_save', False))
