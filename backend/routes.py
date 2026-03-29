@@ -78,17 +78,40 @@ def get_or_create_ai_config(user_id):
     return config
 
 
+def build_system_prompt(assistant_name, personality):
+    safe_name = (assistant_name or '记账助理').strip() or '记账助理'
+    safe_personality = (personality or '温柔、耐心、像朋友一样自然聊天').strip()
+    return (
+        f'你是{safe_name}，你的性格设定是：{safe_personality}。'
+        '你要像真人朋友一样和用户聊天，语气自然、简短、真诚，不要生硬。'
+        '你同时是记账助手：需要从用户输入中识别账单信息。'
+        '请始终返回 JSON 格式：'
+        '{"reply":"给用户的话（口语化）","should_save":true/false,'
+        '"record":{"amount":数字,"entry_type":"expense|income","category":"分类","note":"备注","occurred_at":"YYYY-MM-DD"}}。'
+        '如果信息不足无法记账，should_save=false，并在reply里继续追问用户补充。'
+    )
+
+
+def extract_personality(system_prompt):
+    if not system_prompt:
+        return '温柔、耐心、像朋友一样自然聊天'
+    marker = '你的性格设定是：'
+    idx = system_prompt.find(marker)
+    if idx == -1:
+        return system_prompt[:120]
+    text = system_prompt[idx + len(marker):]
+    end = text.find('。')
+    if end != -1:
+        return text[:end].strip()
+    return text[:120].strip()
+
+
 def serialize_ai_config(config):
     return {
-        'assistant_name': config.assistant_name,
-        'system_prompt': config.system_prompt,
+        'assistant_name': config.assistant_name or '记账助理',
+        'personality': extract_personality(config.system_prompt or ''),
         'api_url': config.api_url or '',
-        'api_method': config.api_method or 'POST',
-        'api_headers': config.api_headers or '{}',
-        'api_model': config.api_model or '',
-        'api_key': config.api_key or '',
-        'request_template': config.request_template or '',
-        'response_path': config.response_path or ''
+        'api_key': config.api_key or ''
     }
 
 
@@ -147,7 +170,7 @@ def fallback_parse_accounting(user_text):
     amount_match = re.search(r'(-?\d+(?:\.\d+)?)', user_text)
     if not amount_match:
         return {
-            'reply': '我还没识别到金额，请补充，例如：今天午饭花了28元。',
+            'reply': '我这边还没听到金额呢～你可以像聊天一样告诉我：比如“今天午饭花了28元”。',
             'should_save': False,
             'record': {}
         }
@@ -172,8 +195,9 @@ def fallback_parse_accounting(user_text):
             category = c
             break
 
+    type_text = '支出' if entry_type == ENTRY_TYPE_EXPENSE else '收入'
     return {
-        'reply': f'已帮你识别为{"支出" if entry_type == ENTRY_TYPE_EXPENSE else "收入"} {amount:.2f} 元，分类：{category}。已记账。',
+        'reply': f'收到啦，我帮你记了一笔：{type_text} {amount:.2f} 元，分类先放在「{category}」。如果你想改分类，直接跟我说～',
         'should_save': True,
         'record': {
             'amount': amount,
@@ -185,45 +209,41 @@ def fallback_parse_accounting(user_text):
     }
 
 
-def call_custom_ai_api(config, user_message):
+def call_custom_ai_api(config, user_message, history_messages=None):
     if not config.api_url:
         return fallback_parse_accounting(user_message)
 
-    headers = {}
-    try:
-        headers = json.loads(config.api_headers or '{}')
-        if not isinstance(headers, dict):
-            headers = {}
-    except Exception:
-        headers = {}
-
-    if config.api_key and 'Authorization' not in headers:
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    if config.api_key:
         headers['Authorization'] = f'Bearer {config.api_key}'
-    if 'Content-Type' not in headers:
-        headers['Content-Type'] = 'application/json'
 
-    payload_template = config.request_template or '{}'
-    rendered_payload = fill_template(payload_template, {
-        'model': config.api_model or '',
-        'system_prompt': config.system_prompt or '',
-        'user_message': user_message
-    })
+    messages = [{
+        'role': 'system',
+        'content': config.system_prompt or build_system_prompt(config.assistant_name, '温柔、耐心、像朋友一样自然聊天')
+    }]
 
-    try:
-        body = json.loads(rendered_payload)
-    except Exception:
-        return {
-            'reply': '请求模板不是合法 JSON，请先在配置里修正 request_template。',
-            'should_save': False,
-            'record': {}
-        }
+    history_messages = history_messages or []
+    for msg in history_messages[-10:]:
+        role = str(msg.get('role', '')).strip()
+        content = str(msg.get('content', '')).strip()
+        if role in ['user', 'assistant'] and content:
+            messages.append({'role': role, 'content': content})
 
-    method = (config.api_method or 'POST').upper()
+    messages.append({'role': 'user', 'content': user_message})
+
+    body = {
+        'model': 'gpt-4o-mini',
+        'messages': messages,
+        'temperature': 0.7
+    }
+
     req = urlrequest.Request(
         url=config.api_url,
         data=json.dumps(body).encode('utf-8'),
         headers=headers,
-        method=method
+        method='POST'
     )
 
     try:
@@ -232,36 +252,37 @@ def call_custom_ai_api(config, user_message):
             data = json.loads(raw)
     except HTTPError as e:
         return {
-            'reply': f'调用 AI API 失败（HTTP {e.code}）。请检查 API URL、Headers 与模板。',
+            'reply': f'我刚刚没连上 AI 服务（HTTP {e.code}）。你检查一下 API URL 或密钥，我们再试一次～',
             'should_save': False,
             'record': {}
         }
     except URLError:
         return {
-            'reply': '调用 AI API 失败（网络错误）。请检查 API URL 是否可访问。',
+            'reply': '我这边网络有点小问题，暂时没连上你配置的 AI 服务。稍后再试试～',
             'should_save': False,
             'record': {}
         }
     except Exception:
         return {
-            'reply': '调用 AI API 失败（响应解析错误）。请检查 response_path 与返回格式。',
+            'reply': 'AI 服务返回的数据我暂时没读懂，你可以检查一下这个 API 是否兼容 chat completions 格式。',
             'should_save': False,
             'record': {}
         }
 
-    content = deep_get(data, config.response_path or '')
+    content = (
+        deep_get(data, 'choices.0.message.content')
+        or deep_get(data, 'output_text')
+        or deep_get(data, 'data.0.output.0.content.0.text')
+    )
+
     if content is None:
         return {
-            'reply': 'AI API 返回成功，但未按 response_path 找到回复内容。',
+            'reply': 'AI 服务有响应，但我没找到可读的回复内容。',
             'should_save': False,
             'record': {}
         }
 
-    if isinstance(content, (dict, list)):
-        parsed = content
-    else:
-        parsed = parse_ai_json_output(str(content))
-
+    parsed = parse_ai_json_output(str(content))
     if not isinstance(parsed, dict):
         return {
             'reply': str(content),
@@ -269,7 +290,7 @@ def call_custom_ai_api(config, user_message):
             'record': {}
         }
 
-    parsed.setdefault('reply', '已处理。')
+    parsed.setdefault('reply', '好呀，我在。')
     parsed.setdefault('should_save', False)
     parsed.setdefault('record', {})
     return parsed
@@ -512,15 +533,19 @@ def ai_accounting_config():
         return jsonify(serialize_ai_config(config)), 200
 
     data = request.get_json() or {}
-    config.assistant_name = data.get('assistant_name', config.assistant_name)
-    config.system_prompt = data.get('system_prompt', config.system_prompt)
+    assistant_name = data.get('assistant_name', config.assistant_name or '记账助理')
+    personality = data.get('personality', extract_personality(config.system_prompt or '温柔、耐心、像朋友一样自然聊天'))
+    config.assistant_name = assistant_name
+    config.system_prompt = build_system_prompt(assistant_name, personality)
     config.api_url = data.get('api_url', config.api_url)
-    config.api_method = str(data.get('api_method', config.api_method or 'POST')).upper()
-    config.api_headers = data.get('api_headers', config.api_headers or '{}')
-    config.api_model = data.get('api_model', config.api_model)
     config.api_key = data.get('api_key', config.api_key)
-    config.request_template = data.get('request_template', config.request_template)
-    config.response_path = data.get('response_path', config.response_path)
+
+    # 保持简单固定，避免前端复杂配置
+    config.api_method = 'POST'
+    config.api_headers = '{}'
+    config.api_model = 'gpt-4o-mini'
+    config.request_template = ''
+    config.response_path = 'choices.0.message.content'
 
     db.session.commit()
     return jsonify({"msg": "配置已保存", "config": serialize_ai_config(config)}), 200
@@ -532,12 +557,13 @@ def ai_accounting_chat():
     current_user_id = int(get_jwt_identity())
     data = request.get_json() or {}
     user_message = (data.get('message') or '').strip()
+    history = data.get('history') or []
 
     if not user_message:
         return jsonify({"msg": "message 不能为空"}), 400
 
     config = get_or_create_ai_config(current_user_id)
-    ai_result = call_custom_ai_api(config, user_message)
+    ai_result = call_custom_ai_api(config, user_message, history)
 
     assistant_reply = str(ai_result.get('reply', '已收到')).strip()
     should_save = bool(ai_result.get('should_save', False))
