@@ -55,11 +55,17 @@ createApp({
         const aiConfig = ref({
             assistant_name: 'NeNe记账助理',
             personality: '温柔、耐心、像朋友一样自然聊天',
+            api_provider: 'custom',
             api_url: '',
             api_key: '',
             api_model: 'gpt-4o-mini'
         });
         const modelOptions = ref([]);
+        const providerOptions = ref([
+            { label: '自定义', value: 'custom', baseUrl: '' },
+            { label: 'OpenAI', value: 'openai', baseUrl: 'https://api.openai.com/v1' },
+            { label: 'Wataruu', value: 'wataruu', baseUrl: 'https://api.wataruu.me/v1' }
+        ]);
         const chatMessages = ref([]);
         const chatInput = ref('');
         const chatLoading = ref(false);
@@ -126,6 +132,7 @@ createApp({
             currentView.value = 'login';
             chatMessages.value = [];
             accountingRecords.value = [];
+            modelOptions.value = [];
         };
 
         const fetchData = async () => {
@@ -186,6 +193,33 @@ createApp({
         };
 
         // AI记账
+        const normalizeApiUrlWithV1 = (url) => {
+            let text = String(url || '').trim();
+            if (!text) return '';
+            text = text.replace(/\/+$/, '');
+            if (text.endsWith('/chat/completions')) return text;
+            if (text.includes('/v1/') || text.endsWith('/v1')) return text;
+            return `${text}/v1`;
+        };
+
+        const inferProviderFromUrl = (url) => {
+            const target = String(url || '').trim().toLowerCase();
+            if (!target) return 'custom';
+            const hit = providerOptions.value.find(p => p.value !== 'custom' && target.startsWith(p.baseUrl.toLowerCase()));
+            return hit ? hit.value : 'custom';
+        };
+
+        const applyProviderPreset = () => {
+            const selected = providerOptions.value.find(p => p.value === aiConfig.value.api_provider);
+            if (!selected || selected.value === 'custom') return;
+            aiConfig.value.api_url = selected.baseUrl;
+        };
+
+        const onApiUrlBlur = () => {
+            aiConfig.value.api_url = normalizeApiUrlWithV1(aiConfig.value.api_url);
+            aiConfig.value.api_provider = inferProviderFromUrl(aiConfig.value.api_url);
+        };
+
         const fetchAiConfig = async () => {
             if (!isLoggedIn.value) return;
             try {
@@ -194,6 +228,7 @@ createApp({
                     ...aiConfig.value,
                     ...res.data
                 };
+                aiConfig.value.api_provider = inferProviderFromUrl(aiConfig.value.api_url);
             } catch (error) {
                 console.error('加载AI配置失败', error);
             }
@@ -205,9 +240,11 @@ createApp({
                 return;
             }
             try {
+                const normalizedUrl = normalizeApiUrlWithV1(aiConfig.value.api_url);
+                aiConfig.value.api_url = normalizedUrl;
                 const res = await axios.get(`${API_URL}/api/ai-accounting/models`, {
                     params: {
-                        api_url: aiConfig.value.api_url,
+                        api_url: normalizedUrl,
                         api_key: aiConfig.value.api_key
                     }
                 });
@@ -226,11 +263,16 @@ createApp({
 
         const saveAiConfig = async () => {
             try {
-                const res = await axios.put(`${API_URL}/api/ai-accounting/config`, aiConfig.value);
+                const payload = {
+                    ...aiConfig.value,
+                    api_url: normalizeApiUrlWithV1(aiConfig.value.api_url)
+                };
+                const res = await axios.put(`${API_URL}/api/ai-accounting/config`, payload);
                 aiConfig.value = {
                     ...aiConfig.value,
                     ...res.data.config
                 };
+                aiConfig.value.api_provider = inferProviderFromUrl(aiConfig.value.api_url);
                 alert('AI配置已保存');
             } catch (error) {
                 alert(error.response?.data?.msg || '保存配置失败');
@@ -256,24 +298,59 @@ createApp({
             const message = chatInput.value.trim();
             if (!message || chatLoading.value) return;
 
-            chatMessages.value.push({ role: 'user', content: message });
+            const userMsg = { role: 'user', content: message };
+            chatMessages.value.push(userMsg);
             chatInput.value = '';
             chatLoading.value = true;
 
             try {
                 const history = chatMessages.value.slice(0, -1);
-                const res = await axios.post(`${API_URL}/api/ai-accounting/chat`, { message, history });
+                const payload = { message, history };
+                const res = await axios.post(`${API_URL}/api/ai-accounting/chat`, payload);
+                const isError = !!res.data.is_error;
                 chatMessages.value.push({
                     role: 'assistant',
-                    content: res.data.assistant_reply || '已收到'
+                    content: res.data.assistant_reply || '已收到',
+                    isError,
+                    retryPayload: isError ? payload : null
                 });
                 accountingRecords.value = res.data.records || accountingRecords.value;
                 await fetchAccountingRecords();
             } catch (error) {
+                const payload = { message, history: chatMessages.value.slice(0, -1) };
                 chatMessages.value.push({
                     role: 'assistant',
-                    content: error.response?.data?.msg || '发送失败，请检查配置后重试。'
+                    content: error.response?.data?.msg || '发送失败，请检查配置后重试。',
+                    isError: true,
+                    retryPayload: payload
                 });
+            } finally {
+                chatLoading.value = false;
+            }
+        };
+
+        const regenerateAccountingMessage = async (msg, idx) => {
+            if (!msg || !msg.retryPayload || chatLoading.value) return;
+
+            chatLoading.value = true;
+            try {
+                const res = await axios.post(`${API_URL}/api/ai-accounting/chat`, msg.retryPayload);
+                const isError = !!res.data.is_error;
+                chatMessages.value[idx] = {
+                    role: 'assistant',
+                    content: res.data.assistant_reply || '已收到',
+                    isError,
+                    retryPayload: isError ? msg.retryPayload : null
+                };
+                accountingRecords.value = res.data.records || accountingRecords.value;
+                await fetchAccountingRecords();
+            } catch (error) {
+                chatMessages.value[idx] = {
+                    role: 'assistant',
+                    content: error.response?.data?.msg || '重新生成失败，请稍后再试。',
+                    isError: true,
+                    retryPayload: msg.retryPayload
+                };
             } finally {
                 chatLoading.value = false;
             }
@@ -434,6 +511,7 @@ createApp({
             pomodoroStatus,
             selectedTaskId,
             aiConfig,
+            providerOptions,
             chatMessages,
             chatInput,
             chatLoading,
@@ -451,8 +529,11 @@ createApp({
             pausePomodoro,
             resetPomodoro,
             fetchAvailableModels,
+            applyProviderPreset,
+            onApiUrlBlur,
             saveAiConfig,
-            sendAccountingMessage
+            sendAccountingMessage,
+            regenerateAccountingMessage
         };
     }
 }).mount('#app');

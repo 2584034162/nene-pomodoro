@@ -295,8 +295,21 @@
                                     <input type="text" class="form-control" v-model="aiConfig.personality" placeholder="例如：温柔耐心、像朋友一样聊天">
                                 </div>
                                 <div class="mb-2">
+                                    <label class="form-label">API 服务商</label>
+                                    <select class="form-select" v-model="aiConfig.api_provider" @change="applyProviderPreset">
+                                        <option v-for="p in providerOptions" :key="p.value" :value="p.value">{{ p.label }}</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
                                     <label class="form-label">API URL</label>
-                                    <input type="text" class="form-control" v-model="aiConfig.api_url" placeholder="例如 https://api.openai.com/v1/chat/completions">
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        v-model="aiConfig.api_url"
+                                        @blur="onApiUrlBlur"
+                                        placeholder="例如 https://api.openai.com/v1"
+                                    >
+                                    <div class="form-text">建议填写到 /v1，系统会自动补全聊天接口。</div>
                                 </div>
                                 <div class="mb-2">
                                     <label class="form-label">API Key</label>
@@ -332,6 +345,11 @@
                                     >
                                         <strong>{{ msg.role === 'user' ? '我' : (aiConfig.assistant_name || '助理') }}：</strong>
                                         {{ msg.content }}
+                                        <div v-if="msg.role === 'assistant' && msg.isError" class="mt-2">
+                                            <button class="btn btn-sm btn-outline-secondary" @click="regenerateAccountingMessage(msg, idx)" :disabled="chatLoading">
+                                                重新生成
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
 
