@@ -286,47 +286,70 @@
                         <div class="card">
                             <div class="card-header">AI 助理配置</div>
                             <div class="card-body">
-                                <div class="mb-2">
-                                    <label class="form-label">助理名称</label>
-                                    <input type="text" class="form-control" v-model="aiConfig.assistant_name">
-                                </div>
-                                <div class="mb-2">
-                                    <label class="form-label">性格设定</label>
-                                    <input type="text" class="form-control" v-model="aiConfig.personality" placeholder="例如：温柔耐心、像朋友一样聊天">
-                                </div>
-                                <div class="mb-2">
-                                    <label class="form-label">API 服务商</label>
-                                    <select class="form-select" v-model="aiConfig.api_provider" @change="applyProviderPreset">
-                                        <option v-for="p in providerOptions" :key="p.value" :value="p.value">{{ p.label }}</option>
-                                    </select>
-                                </div>
-                                <div class="mb-2">
-                                    <label class="form-label">API URL</label>
-                                    <input
-                                        type="text"
-                                        class="form-control"
-                                        v-model="aiConfig.api_url"
-                                        @blur="onApiUrlBlur"
-                                        placeholder="例如 https://api.openai.com/v1"
+                                <div class="btn-group w-100 mb-3">
+                                    <button
+                                        class="btn"
+                                        :class="accountingConfigTab === 'api' ? 'btn-primary' : 'btn-outline-primary'"
+                                        @click="accountingConfigTab = 'api'"
                                     >
-                                    <div class="form-text">建议填写到 /v1，系统会自动补全聊天接口。</div>
+                                        API配置
+                                    </button>
+                                    <button
+                                        class="btn"
+                                        :class="accountingConfigTab === 'assistant' ? 'btn-primary' : 'btn-outline-primary'"
+                                        @click="accountingConfigTab = 'assistant'"
+                                    >
+                                        AI助理设定
+                                    </button>
                                 </div>
-                                <div class="mb-2">
-                                    <label class="form-label">API Key</label>
-                                    <input type="password" class="form-control" v-model="aiConfig.api_key">
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label">可选模型</label>
-                                    <div class="input-group">
-                                        <select class="form-select" v-model="aiConfig.api_model">
-                                            <option value="">请选择模型</option>
-                                            <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
-                                        </select>
-                                        <button class="btn btn-outline-secondary" type="button" @click="fetchAvailableModels">拉取模型</button>
+
+                                <div v-if="accountingConfigTab === 'assistant'">
+                                    <div class="mb-2">
+                                        <label class="form-label">助理名称</label>
+                                        <input type="text" class="form-control" v-model="aiConfig.assistant_name">
                                     </div>
-                                    <div class="form-text">点击“拉取模型”后可从该 API 获取可用模型并选择。</div>
+                                    <div class="mb-3">
+                                        <label class="form-label">性格设定</label>
+                                        <input type="text" class="form-control" v-model="aiConfig.personality" placeholder="例如：温柔耐心、像朋友一样聊天">
+                                    </div>
                                 </div>
-                                <button class="btn btn-primary" @click="saveAiConfig">保存配置</button>
+
+                                <div v-else>
+                                    <div class="mb-2">
+                                        <label class="form-label">API 服务商</label>
+                                        <select class="form-select" v-model="aiConfig.api_provider" @change="applyProviderPreset">
+                                            <option v-for="p in providerOptions" :key="p.value" :value="p.value">{{ p.label }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label">API URL</label>
+                                        <input
+                                            type="text"
+                                            class="form-control"
+                                            v-model="aiConfig.api_url"
+                                            @blur="onApiUrlBlur"
+                                            placeholder="例如 https://api.openai.com/v1"
+                                        >
+                                        <div class="form-text">建议填写到 /v1，系统会自动补全聊天接口。</div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label">API Key</label>
+                                        <input type="password" class="form-control" v-model="aiConfig.api_key">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">可选模型</label>
+                                        <div class="input-group">
+                                            <select class="form-select" v-model="aiConfig.api_model">
+                                                <option value="">请选择模型</option>
+                                                <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
+                                            </select>
+                                            <button class="btn btn-outline-secondary" type="button" @click="fetchAvailableModels">拉取模型</button>
+                                        </div>
+                                        <div class="form-text">点击“拉取模型”后可从该 API 获取可用模型并选择。</div>
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-primary w-100" @click="saveAiConfig">保存配置</button>
                             </div>
                         </div>
                     </div>

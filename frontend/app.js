@@ -1,7 +1,7 @@
 const { createApp, ref, onMounted, computed, watch } = Vue;
 
 // 自动判断环境：如果是本地开发(localhost/127.0.0.1)，使用本地后端；否则使用生产环境后端
-// 这里是后端部署到了render上面，因此是下面这样
+// 这里吧后端部署到了render上面，因此是下面这样
 const PROD_API_URL = 'https://nene-pomodoro.onrender.com';
 const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://127.0.0.1:5000'
@@ -76,6 +76,7 @@ createApp({
             expense: 0,
             balance: 0
         });
+        const accountingConfigTab = ref('api');
 
         // 计算属性
         const isLoggedIn = computed(() => !!token.value);
@@ -306,7 +307,12 @@ createApp({
 
             try {
                 const history = chatMessages.value.slice(0, -1);
-                const payload = { message, history };
+                const payload = {
+                    message,
+                    history,
+                    assistant_name: aiConfig.value.assistant_name,
+                    personality: aiConfig.value.personality
+                };
                 const res = await axios.post(`${API_URL}/api/ai-accounting/chat`, payload);
                 const isError = !!res.data.is_error;
                 chatMessages.value.push({
@@ -318,7 +324,12 @@ createApp({
                 accountingRecords.value = res.data.records || accountingRecords.value;
                 await fetchAccountingRecords();
             } catch (error) {
-                const payload = { message, history: chatMessages.value.slice(0, -1) };
+                const payload = {
+                    message,
+                    history: chatMessages.value.slice(0, -1),
+                    assistant_name: aiConfig.value.assistant_name,
+                    personality: aiConfig.value.personality
+                };
                 chatMessages.value.push({
                     role: 'assistant',
                     content: error.response?.data?.msg || '发送失败，请检查配置后重试。',
@@ -518,6 +529,7 @@ createApp({
             chatLoading,
             accountingRecords,
             accountingSummary,
+            accountingConfigTab,
             modelOptions,
             login,
             register,
